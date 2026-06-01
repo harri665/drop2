@@ -94,8 +94,24 @@ io.on('connection', (socket) => {
 });
 
 async function start() {
-  await mongoose.connect(process.env.MONGODB_URI);
-  console.log('MongoDB connected');
+  const maxRetries = 5;
+  let retries = 0;
+  
+  while (retries < maxRetries) {
+    try {
+      await mongoose.connect(process.env.MONGODB_URI);
+      console.log('MongoDB connected');
+      break;
+    } catch (err) {
+      retries++;
+      console.log(`MongoDB connection attempt ${retries} failed. Retrying in 5s...`);
+      if (retries === maxRetries) {
+        console.error('Max retries reached. Startup error:', err);
+        process.exit(1);
+      }
+      await new Promise(res => setTimeout(res, 5000));
+    }
+  }
 
   // Seed admin grid pattern on first run
   const Config = require('./models/Config');
