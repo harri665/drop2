@@ -2,7 +2,7 @@ services:
   app:
     build: .
     ports:
-      - "3006:3000"
+      - "3007:3000"
     environment:
       - MONGODB_URI=mongodb://mongo:27017/drop2
       - PORT=3000
@@ -12,7 +12,10 @@ services:
   client:
     build: ./client
     ports:
-      - "3007:5173"
+      - "3006:5173"
+    environment:
+      - VITE_API_TARGET=http://app:3000
+      - VITE_SOCKET_URL=http://localhost:3007
     depends_on:
       - app
 

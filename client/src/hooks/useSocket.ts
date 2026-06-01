@@ -24,7 +24,8 @@ export function useSocket(options: UseSocketOptions): UseSocketReturn {
 
     // In dev, connect directly to the backend to avoid Vite proxy duplicating
     // socket events during the polling→WebSocket transport upgrade handshake.
-    const url = import.meta.env.DEV ? 'http://localhost:3000' : undefined;
+    const devUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+    const url = import.meta.env.DEV ? devUrl : undefined;
     const socket = io(url!, {
       auth: { token },
       transports: ['websocket'],
