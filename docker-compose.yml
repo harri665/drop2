@@ -6,8 +6,8 @@ services:
     environment:
       - MONGODB_URI=mongodb://mongo:27017/drop2
       - PORT=3000
-    env_file:
-      - .env
+      - JWT_SECRET=drop2-super-secret-jwt-key-change-me
+      - INITIAL_GRID_SEQUENCE=1,5,9
     depends_on:
       mongo:
         condition: service_healthy
