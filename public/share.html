@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>drop2 — shared</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body { background: #0f1117; }
+    .prose-dark h1,.prose-dark h2,.prose-dark h3 { color: #e5e7eb; font-weight: 600; margin: 0.5em 0 0.25em; }
+    .prose-dark p { color: #d1d5db; margin: 0.4em 0; line-height: 1.7; }
+    .prose-dark a { color: #60a5fa; }
+    .prose-dark code { background: #1e2433; color: #a78bfa; padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+    .prose-dark pre { background: #1e2433; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    .prose-dark pre code { background: none; padding: 0; }
+    .prose-dark ul,.prose-dark ol { color: #d1d5db; padding-left: 1.5em; }
+    .prose-dark blockquote { border-left: 3px solid #3b82f6; padding-left: 12px; color: #9ca3af; }
+  </style>
+</head>
+<body class="min-h-screen text-white">
+  <header class="border-b border-gray-800 px-6 py-4">
+    <a href="/" class="text-lg font-bold text-white">drop<span class="text-blue-400">2</span></a>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-10" id="content">
+    <div class="text-gray-500 text-center py-20">Loading...</div>
+  </main>
+
+  <script>
+    const slug = location.pathname.split('/s/')[1];
+
+    async function load() {
+      const res = await fetch(`/api/shares/public/${slug}`);
+      const content = document.getElementById('content');
+
+      if (!res.ok) {
+        content.innerHTML = `<div class="text-center py-20">
+          <p class="text-5xl mb-4">🔗</p>
+          <p class="text-gray-400 text-lg">This link doesn't exist or has been revoked.</p>
+        </div>`;
+        return;
+      }
+
+      const { note } = await res.json();
+
+      if (note.type === 'image') {
+        content.innerHTML = `
+          <div class="text-center">
+            <img src="/api/files/view/${note._id}" alt="${esc(note.originalName)}"
+              class="max-w-full rounded-2xl mx-auto shadow-2xl mb-6">
+            <p class="text-gray-400 text-sm mb-4">${esc(note.originalName)}</p>
+            <div class="flex justify-center gap-3">
+              <a href="/api/files/download/${note._id}" download
+                class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-sm font-medium transition">
+                ↓ Download
+              </a>
+              ${navigator.share ? `<button onclick="nativeShare()" class="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 rounded-xl text-white text-sm font-medium transition">Share</button>` : ''}
+            </div>
+          </div>`;
+
+        window.nativeShare = async () => {
+          try {
+            const imgRes = await fetch(`/api/files/view/${note._id}`);
+            const blob = await imgRes.blob();
+            const file = new File([blob], note.originalName, { type: blob.type });
+            await navigator.share({ files: [file], title: note.originalName });
+          } catch {}
+        };
+
+      } else if (note.type === 'file') {
+        content.innerHTML = `
+          <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center max-w-md mx-auto">
+            <div class="text-5xl mb-4">${fileIcon(note.mimeType)}</div>
+            <p class="text-white font-semibold text-lg mb-1">${esc(note.originalName)}</p>
+            <p class="text-gray-500 text-sm mb-6">${fmtSize(note.fileSize)}</p>
+            <a href="/api/files/download/${note._id}" download
+              class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-medium transition">
+              ↓ Download
+            </a>
+          </div>`;
+
+      } else {
+        const title = note.title ? `<h1 class="text-2xl font-bold text-white mb-4">${esc(note.title)}</h1>` : '';
+        content.innerHTML = `
+          <div class="bg-gray-900 border border-gray-800 rounded-2xl px-8 py-7">
+            ${title}
+            <div class="prose-dark">${marked.parse(note.content || '')}</div>
+          </div>`;
+      }
+    }
+
+    function esc(str) {
+      return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function fmtSize(b) {
+      if (!b) return '';
+      if (b < 1024) return b + 'B';
+      if (b < 1048576) return (b/1024).toFixed(1) + 'KB';
+      return (b/1048576).toFixed(1) + 'MB';
+    }
+    function fileIcon(mime) {
+      if (!mime) return '📄';
+      if (mime.includes('pdf')) return '📕';
+      if (mime.includes('zip') || mime.includes('compressed')) return '📦';
+      if (mime.includes('video')) return '🎬';
+      if (mime.includes('audio')) return '🎵';
+      return '📎';
+    }
+
+    load();
+  </script>
+</body>
+</html>

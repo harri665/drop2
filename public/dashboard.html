@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>drop2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { background: #0f1117; }
+    .note-card { break-inside: avoid; margin-bottom: 16px; }
+    .masonry { columns: 1; gap: 16px; }
+    @media (min-width: 640px) { .masonry { columns: 2; } }
+    @media (min-width: 1024px) { .masonry { columns: 3; } }
+    @media (min-width: 1400px) { .masonry { columns: 4; } }
+
+    .prose-dark h1,.prose-dark h2,.prose-dark h3 { color: #e5e7eb; font-weight: 600; margin: 0.5em 0 0.25em; }
+    .prose-dark p { color: #d1d5db; margin: 0.25em 0; }
+    .prose-dark a { color: #60a5fa; }
+    .prose-dark code { background: #1e2433; color: #a78bfa; padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
+    .prose-dark pre { background: #1e2433; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    .prose-dark pre code { background: none; padding: 0; }
+    .prose-dark ul,.prose-dark ol { color: #d1d5db; padding-left: 1.5em; }
+    .prose-dark blockquote { border-left: 3px solid #3b82f6; padding-left: 12px; color: #9ca3af; }
+
+    .note-textarea { resize: none; background: transparent; outline: none; width: 100%; color: #e5e7eb; font-family: inherit; font-size: 0.9rem; }
+    .note-textarea::placeholder { color: #4b5563; }
+
+    /* Drag overlay */
+    #drop-overlay { display: none; position: fixed; inset: 0; background: rgba(59,130,246,0.15); border: 2px dashed #3b82f6; z-index: 9999; pointer-events: none; }
+    #drop-overlay.active { display: flex; align-items: center; justify-content: center; }
+
+    /* Toast */
+    #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 10000; }
+    .toast { padding: 10px 16px; border-radius: 10px; font-size: 0.875rem; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.4); transform: translateX(120%); transition: transform 0.3s ease; }
+    .toast.show { transform: translateX(0); }
+    .toast.success { background: #064e3b; color: #6ee7b7; border: 1px solid #065f46; }
+    .toast.error { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal { background: #1a1f2e; border: 1px solid #2d3a5e; border-radius: 16px; width: 100%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; }
+
+    /* Sync LED */
+    .led { width: 8px; height: 8px; border-radius: 50%; background: #374151; display: inline-block; }
+    .led.online { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    .led.offline { background: #ef4444; }
+
+    /* Image lightbox */
+    #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 8000; align-items: center; justify-content: center; }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+  </style>
+</head>
+<body class="min-h-screen text-white">
+
+<!-- Drop overlay -->
+<div id="drop-overlay">
+  <div class="text-blue-300 text-2xl font-semibold pointer-events-none">Drop to upload</div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- Fullscreen Editor Modal -->
+<div id="editor-modal" class="modal-backdrop hidden">
+  <div class="modal overflow-hidden">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <input id="modal-title" type="text" placeholder="Title (optional)" class="bg-transparent text-white text-lg font-semibold outline-none flex-1 mr-4 placeholder-gray-600">
+      <div class="flex gap-2">
+        <button id="modal-tab-edit" onclick="setModalTab('edit')" class="px-3 py-1 rounded-md text-sm bg-blue-600 text-white">Edit</button>
+        <button id="modal-tab-preview" onclick="setModalTab('preview')" class="px-3 py-1 rounded-md text-sm bg-gray-700 text-gray-300">Preview</button>
+        <button onclick="closeEditor()" class="px-3 py-1 rounded-md text-sm bg-gray-700 text-gray-400 hover:text-white">✕</button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-hidden flex" style="min-height:0;">
+      <textarea id="modal-edit" class="flex-1 p-5 bg-transparent text-gray-200 outline-none resize-none font-mono text-sm leading-relaxed" placeholder="Write in markdown..."></textarea>
+      <div id="modal-preview" class="flex-1 p-5 overflow-y-auto prose-dark hidden"></div>
+    </div>
+    <div class="flex justify-end gap-2 px-5 py-3 border-t border-gray-800">
+      <button onclick="closeEditor()" class="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300">Cancel</button>
+      <button onclick="saveFromModal()" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-medium">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div id="share-modal" class="modal-backdrop hidden">
+  <div class="modal" style="max-width:480px;">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <h2 class="text-white font-semibold">Share note</h2>
+      <button onclick="closeShareModal()" class="text-gray-400 hover:text-white text-xl">✕</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="text-gray-400 text-sm block mb-1">Custom link slug</label>
+        <div class="flex gap-2">
+          <span class="text-gray-500 text-sm self-center">/s/</span>
+          <input id="share-slug-input" type="text" placeholder="my-cool-note" class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500">
+        </div>
+      </div>
+      <button onclick="createShare()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-sm font-medium">Create link</button>
+      <div id="share-result" class="hidden">
+        <div class="bg-gray-800 rounded-lg px-4 py-3 flex items-center justify-between gap-2">
+          <span id="share-link-text" class="text-blue-400 text-sm truncate"></span>
+          <button onclick="copyShareLink()" class="text-gray-400 hover:text-white text-xs whitespace-nowrap">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shares Manager Modal -->
+<div id="shares-manager-modal" class="modal-backdrop hidden">
+  <div class="modal" style="max-width:560px;">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <h2 class="text-white font-semibold">Active shares</h2>
+      <button onclick="closeSharesManager()" class="text-gray-400 hover:text-white text-xl">✕</button>
+    </div>
+    <div id="shares-list" class="p-5 space-y-2 overflow-y-auto" style="max-height:60vh;"></div>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="sticky top-0 z-40 border-b border-gray-800/60 bg-gray-900/80 backdrop-blur">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
+    <h1 class="text-xl font-bold text-white">drop<span class="text-blue-400">2</span></h1>
+    <div class="flex-1"></div>
+    <span id="sync-led" class="led" title="WebSocket status"></span>
+    <button onclick="openSharesManager()" class="text-gray-400 hover:text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition">Links</button>
+    <button onclick="logout()" class="text-gray-500 hover:text-gray-300 text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800 transition">Logout</button>
+  </div>
+</header>
+
+<!-- New note bar -->
+<div class="max-w-7xl mx-auto px-4 pt-5 pb-3">
+  <div class="flex gap-2">
+    <textarea id="quick-note" rows="2" placeholder="Type a note... (or paste / drop files anywhere)"
+      class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-gray-200 text-sm outline-none focus:border-blue-500 resize-none placeholder-gray-600 transition"></textarea>
+    <div class="flex flex-col gap-2">
+      <button onclick="createQuickNote()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-sm font-medium transition">Add</button>
+      <label class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-gray-300 text-xs text-center cursor-pointer transition">
+        File
+        <input type="file" multiple class="hidden" onchange="handleFileInput(this)">
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Notes grid -->
+<main class="max-w-7xl mx-auto px-4 pb-12">
+  <div id="notes-grid" class="masonry"></div>
+  <div id="empty-state" class="hidden text-center py-20 text-gray-600">
+    <p class="text-4xl mb-3">📋</p>
+    <p class="text-lg">Nothing here yet.</p>
+    <p class="text-sm mt-1">Paste text or drop files to get started.</p>
+  </div>
+</main>
+
+<script>
+  const TOKEN = localStorage.getItem('drop2_token');
+  if (!TOKEN) window.location.href = '/';
+
+  const api = (path, opts = {}) => {
+    const headers = { 'Authorization': `Bearer ${TOKEN}`, ...(opts.headers || {}) };
+    if (opts.body && typeof opts.body === 'string') headers['Content-Type'] = 'application/json';
+    return fetch('/api' + path, { ...opts, headers });
+  };
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    document.getElementById('toast-container').appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 300);
+    }, 3000);
+  }
+
+  // ── Socket.IO ──────────────────────────────────────────────────────────────
+  const socket = io({ auth: { token: TOKEN } });
+  const led = document.getElementById('sync-led');
+
+  socket.on('connect', () => { led.className = 'led online'; });
+  socket.on('disconnect', () => { led.className = 'led offline'; });
+  socket.on('note:created', note => { 
+    const id = String(note._id);
+    if (!notesMap.has(id)) { 
+      notesMap.set(id, note); 
+      renderNote(note, true); 
+      updateEmpty(); 
+    } 
+  });
+  socket.on('note:updated', note => { notesMap.set(String(note._id), note); updateNoteCard(note); });
+  socket.on('note:deleted', ({ id }) => { notesMap.delete(String(id)); document.querySelector(`[data-id="${id}"]`)?.remove(); updateEmpty(); });
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const notesMap = new Map();
+  let editingNoteId = null;
+  let sharingNoteId = null;
+  let autoSaveTimer = null;
+
+  // ── Load notes ─────────────────────────────────────────────────────────────
+  async function loadNotes() {
+    const res = await api('/notes');
+    const notes = await res.json();
+    notes.forEach(n => notesMap.set(String(n._id), n));
+    document.getElementById('notes-grid').innerHTML = '';
+    notes.forEach(n => renderNote(n));
+    updateEmpty();
+  }
+
+  // ── Render note card ───────────────────────────────────────────────────────
+  function renderNote(note, prepend = false) {
+    const card = document.createElement('div');
+    card.className = 'note-card';
+    card.dataset.id = note._id;
+    card.innerHTML = buildCardHTML(note);
+    const grid = document.getElementById('notes-grid');
+    if (prepend) grid.prepend(card); else grid.appendChild(card);
+  }
+
+  function buildCardHTML(note) {
+    const ts = relTime(note.updatedAt);
+
+    if (note.type === 'image') {
+      return `
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden group">
+          <img src="/api/files/view/${note._id}" alt="${esc(note.originalName)}"
+            class="w-full object-cover cursor-pointer hover:opacity-90 transition"
+            onclick="openLightbox('/api/files/view/${note._id}')">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <span class="text-gray-500 text-xs truncate">${esc(note.originalName)}</span>
+            <div class="flex gap-2 items-center">
+              <span class="text-gray-600 text-xs">${ts}</span>
+              ${cardActions(note)}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    if (note.type === 'file') {
+      return `
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-center gap-3 group">
+          <div class="text-2xl">${fileIcon(note.mimeType)}</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-gray-200 text-sm font-medium truncate">${esc(note.originalName)}</p>
+            <p class="text-gray-500 text-xs">${fmtSize(note.fileSize)} · ${ts}</p>
+          </div>
+          <div class="flex gap-1 items-center">
+            <a href="/api/files/download/${note._id}" class="text-blue-400 hover:text-blue-300 text-xs px-2 py-1 rounded hover:bg-gray-800">↓</a>
+            ${cardActions(note)}
+          </div>
+        </div>`;
+    }
+
+    // text note
+    const rendered = marked.parse(note.content || '');
+    const preview = note.content?.length > 300 ? marked.parse(note.content.slice(0, 300) + '...') : rendered;
+    return `
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 group">
+        ${note.title ? `<p class="text-white font-semibold text-sm mb-1">${esc(note.title)}</p>` : ''}
+        <div class="prose-dark text-sm leading-relaxed note-rendered overflow-hidden">${preview}</div>
+        <div class="flex items-center justify-between mt-2 pt-2 border-t border-gray-800">
+          <span class="text-gray-600 text-xs">${ts}</span>
+          <div class="flex gap-1">
+            <button onclick="openEditor('${note._id}')" class="text-gray-500 hover:text-blue-400 text-xs px-2 py-1 rounded hover:bg-gray-800">Edit</button>
+            ${cardActions(note)}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function cardActions(note) {
+    return `
+      <button onclick="openShareModal('${note._id}')" class="text-gray-500 hover:text-green-400 text-xs px-2 py-1 rounded hover:bg-gray-800" title="Share">⇪</button>
+      <button onclick="deleteNote('${note._id}')" class="text-gray-500 hover:text-red-400 text-xs px-2 py-1 rounded hover:bg-gray-800" title="Delete">✕</button>
+    `;
+  }
+
+  function updateNoteCard(note) {
+    const card = document.querySelector(`[data-id="${note._id}"]`);
+    if (!card) return;
+    card.innerHTML = buildCardHTML(note);
+  }
+
+  function updateEmpty() {
+    const empty = document.getElementById('empty-state');
+    const grid = document.getElementById('notes-grid');
+    const hasNotes = grid.children.length > 0;
+    empty.classList.toggle('hidden', hasNotes);
+    grid.classList.toggle('hidden', !hasNotes);
+  }
+
+  // ── Create note ────────────────────────────────────────────────────────────
+  async function createQuickNote() {
+    const ta = document.getElementById('quick-note');
+    const content = ta.value.trim();
+    if (!content) return;
+    ta.value = '';
+    const res = await api('/notes', {
+      method: 'POST',
+      body: JSON.stringify({ content, type: 'text' })
+    });
+    if (!res.ok) toast('Failed to create note', 'error');
+  }
+
+  document.getElementById('quick-note').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) createQuickNote();
+  });
+
+  // ── Delete note ────────────────────────────────────────────────────────────
+  async function deleteNote(id) {
+    document.querySelector(`[data-id="${id}"]`)?.remove(); // optimistic
+    updateEmpty();
+    const res = await api(`/notes/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      toast('Delete failed', 'error');
+      const note = notesMap.get(id);
+      if (note) renderNote(note, true);
+    } else {
+      notesMap.delete(id);
+      toast('Deleted');
+    }
+  }
+
+  // ── Fullscreen editor ──────────────────────────────────────────────────────
+  function openEditor(id) {
+    editingNoteId = id;
+    const note = notesMap.get(id);
+    document.getElementById('modal-title').value = note.title || '';
+    document.getElementById('modal-edit').value = note.content || '';
+    setModalTab('edit');
+    document.getElementById('editor-modal').classList.remove('hidden');
+
+    // auto-save on type
+    document.getElementById('modal-edit').addEventListener('input', onModalInput);
+  }
+
+  function onModalInput() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(saveFromModal, 1000);
+  }
+
+  function closeEditor() {
+    document.getElementById('editor-modal').classList.add('hidden');
+    document.getElementById('modal-edit').removeEventListener('input', onModalInput);
+    clearTimeout(autoSaveTimer);
+    editingNoteId = null;
+  }
+
+  async function saveFromModal() {
+    if (!editingNoteId) return;
+    const content = document.getElementById('modal-edit').value;
+    const title = document.getElementById('modal-title').value;
+    const res = await api(`/notes/${editingNoteId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, title })
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      notesMap.set(updated._id, updated);
+      updateNoteCard(updated);
+    }
+  }
+
+  function setModalTab(tab) {
+    const editEl = document.getElementById('modal-edit');
+    const prevEl = document.getElementById('modal-preview');
+    const tabEdit = document.getElementById('modal-tab-edit');
+    const tabPrev = document.getElementById('modal-tab-preview');
+    if (tab === 'edit') {
+      editEl.classList.remove('hidden'); prevEl.classList.add('hidden');
+      tabEdit.className = 'px-3 py-1 rounded-md text-sm bg-blue-600 text-white';
+      tabPrev.className = 'px-3 py-1 rounded-md text-sm bg-gray-700 text-gray-300';
+    } else {
+      prevEl.innerHTML = marked.parse(editEl.value || '');
+      prevEl.classList.remove('hidden'); editEl.classList.add('hidden');
+      tabPrev.className = 'px-3 py-1 rounded-md text-sm bg-blue-600 text-white';
+      tabEdit.className = 'px-3 py-1 rounded-md text-sm bg-gray-700 text-gray-300';
+    }
+  }
+
+  // ── Paste & Drop ───────────────────────────────────────────────────────────
+  document.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        await uploadFile(file);
+        return;
+      }
+    }
+
+    // Text paste — create note (only if not in an input/textarea)
+    const target = e.target;
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return;
+
+    const text = e.clipboardData.getData('text');
+    if (text.trim()) {
+      e.preventDefault();
+      const res = await api('/notes', {
+        method: 'POST',
+        body: JSON.stringify({ content: text, type: 'text' })
+      });
+      if (res.ok) toast('Note created from paste');
+      else toast('Failed', 'error');
+    }
+  });
+
+  const overlay = document.getElementById('drop-overlay');
+  let dragCounter = 0;
+
+  document.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; overlay.classList.add('active'); });
+  document.addEventListener('dragleave', () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; overlay.classList.remove('active'); } });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    overlay.classList.remove('active');
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) await uploadFile(f);
+
+    // Text drop
+    const text = e.dataTransfer.getData('text');
+    if (!files.length && text.trim()) {
+      await api('/notes', { method: 'POST', body: JSON.stringify({ content: text, type: 'text' }) });
+    }
+  });
+
+  async function uploadFile(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    toast(`Uploading ${file.name}...`);
+    try {
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${TOKEN}` },
+        body: fd
+      });
+      if (res.ok) toast(`Uploaded ${file.name}`);
+      else toast('Upload failed', 'error');
+    } catch {
+      toast('Upload error', 'error');
+    }
+  }
+
+  function handleFileInput(input) {
+    Array.from(input.files).forEach(uploadFile);
+    input.value = '';
+  }
+
+  // ── Lightbox ───────────────────────────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeLightbox(); closeEditor(); closeShareModal(); } });
+
+  // ── Share modal ────────────────────────────────────────────────────────────
+  function openShareModal(id) {
+    sharingNoteId = id;
+    document.getElementById('share-slug-input').value = '';
+    document.getElementById('share-result').classList.add('hidden');
+    document.getElementById('share-modal').classList.remove('hidden');
+  }
+  function closeShareModal() { document.getElementById('share-modal').classList.add('hidden'); sharingNoteId = null; }
+
+  async function createShare() {
+    const slug = document.getElementById('share-slug-input').value.trim();
+    if (!slug) return toast('Enter a slug', 'error');
+    const res = await api('/shares', {
+      method: 'POST',
+      body: JSON.stringify({ noteId: sharingNoteId, slug })
+    });
+    const data = await res.json();
+    if (!res.ok) return toast(data.error || 'Error', 'error');
+    const link = `${location.origin}/s/${data.slug}`;
+    document.getElementById('share-link-text').textContent = link;
+    document.getElementById('share-link-text').dataset.link = link;
+    document.getElementById('share-result').classList.remove('hidden');
+    toast('Share link created');
+  }
+
+  function copyShareLink() {
+    const link = document.getElementById('share-link-text').dataset.link;
+    navigator.clipboard.writeText(link).then(() => toast('Copied!'));
+  }
+
+  // ── Shares manager ─────────────────────────────────────────────────────────
+  async function openSharesManager() {
+    document.getElementById('shares-manager-modal').classList.remove('hidden');
+    await loadSharesList();
+  }
+  function closeSharesManager() { document.getElementById('shares-manager-modal').classList.add('hidden'); }
+
+  async function loadSharesList() {
+    const res = await api('/shares');
+    const shares = await res.json();
+    const list = document.getElementById('shares-list');
+    if (!shares.length) { list.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">No active shares</p>'; return; }
+    list.innerHTML = shares.map(s => `
+      <div class="flex items-center justify-between bg-gray-800 rounded-xl px-4 py-2.5 gap-3" id="share-item-${s._id}">
+        <div class="min-w-0">
+          <a href="/s/${s.slug}" target="_blank" class="text-blue-400 hover:underline text-sm">/s/${s.slug}</a>
+          <p class="text-gray-500 text-xs truncate">${s.noteId?.title || s.noteId?.originalName || s.noteId?.content?.slice(0,40) || 'note'}</p>
+        </div>
+        <button onclick="revokeShare('${s._id}')" class="text-red-400 hover:text-red-300 text-xs px-2 py-1 rounded hover:bg-gray-700 whitespace-nowrap">Revoke</button>
+      </div>`).join('');
+  }
+
+  async function revokeShare(id) {
+    await api(`/shares/${id}`, { method: 'DELETE' });
+    document.getElementById(`share-item-${id}`)?.remove();
+    toast('Share revoked');
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function relTime(dateStr) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+    if (s < 172800) return 'Yesterday';
+    return new Date(dateStr).toLocaleDateString();
+  }
+
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1048576) return (bytes/1024).toFixed(1) + 'KB';
+    return (bytes/1048576).toFixed(1) + 'MB';
+  }
+
+  function fileIcon(mime) {
+    if (!mime) return '📄';
+    if (mime.includes('pdf')) return '📕';
+    if (mime.includes('zip') || mime.includes('compressed')) return '📦';
+    if (mime.includes('video')) return '🎬';
+    if (mime.includes('audio')) return '🎵';
+    if (mime.includes('text')) return '📝';
+    return '📎';
+  }
+
+  function logout() {
+    localStorage.removeItem('drop2_token');
+    window.location.href = '/';
+  }
+
+  // ── Delete button needs no auth header override ────────────────────────────
+  // Fix: api() adds Content-Type which DELETE doesn't need but that's fine
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadNotes();
+</script>
+</body>
+</html>

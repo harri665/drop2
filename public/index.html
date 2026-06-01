@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>drop2 — login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f1117; }
+    .grid-cell {
+      transition: background 0.1s, transform 0.1s;
+      cursor: pointer;
+      user-select: none;
+    }
+    .grid-cell:hover { background: #2d3a5e !important; transform: scale(1.05); }
+    .grid-cell.selected { background: #3b82f6 !important; }
+    .grid-cell.selected:nth-child(1) { opacity: 1; }
+    .shake { animation: shake 0.4s ease; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; display: inline-block; margin: 2px; }
+    .dot.empty { background: #374151; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-sm px-4">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-white tracking-tight">drop<span class="text-blue-400">2</span></h1>
+      <p class="text-gray-500 text-sm mt-1">draw your pattern</p>
+    </div>
+
+    <!-- Sequence dots indicator -->
+    <div id="dots" class="flex justify-center mb-6 gap-1 min-h-[18px]"></div>
+
+    <!-- 3x3 grid -->
+    <div id="grid" class="grid grid-cols-3 gap-3 mb-6">
+    </div>
+
+    <!-- Error message -->
+    <p id="error" class="text-red-400 text-sm text-center mb-4 hidden"></p>
+
+    <!-- Submit / Clear -->
+    <div class="flex gap-3">
+      <button id="clearBtn" class="flex-1 py-2.5 rounded-lg bg-gray-800 text-gray-400 hover:bg-gray-700 transition text-sm">
+        Clear
+      </button>
+      <button id="submitBtn" class="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition text-sm disabled:opacity-40" disabled>
+        Enter
+      </button>
+    </div>
+
+    <p class="text-gray-600 text-xs text-center mt-4">keys 1–9 to select · Enter to submit · Backspace to undo</p>
+  </div>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const dots = document.getElementById('dots');
+    const submitBtn = document.getElementById('submitBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const errorEl = document.getElementById('error');
+
+    let sequence = [];
+
+    // Build grid
+    for (let i = 1; i <= 9; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell rounded-xl bg-gray-800 aspect-square flex items-center justify-center text-gray-600 text-lg font-mono select-none';
+      cell.dataset.num = i;
+      cell.textContent = i;
+      cell.addEventListener('click', () => toggleCell(i));
+      grid.appendChild(cell);
+    }
+
+    function toggleCell(num) {
+      if (sequence.includes(num)) return; // no duplicates
+      sequence.push(num);
+      updateUI();
+    }
+
+    function updateUI() {
+      // Update cell highlights
+      document.querySelectorAll('.grid-cell').forEach(c => {
+        const n = parseInt(c.dataset.num);
+        const idx = sequence.indexOf(n);
+        if (idx >= 0) {
+          c.classList.add('selected');
+          c.style.background = '';
+        } else {
+          c.classList.remove('selected');
+        }
+      });
+
+      // Update dots
+      dots.innerHTML = '';
+      const maxDots = 9;
+      for (let i = 0; i < Math.max(sequence.length, 1); i++) {
+        const d = document.createElement('span');
+        d.className = i < sequence.length ? 'dot' : 'dot empty';
+        dots.appendChild(d);
+      }
+
+      submitBtn.disabled = sequence.length === 0;
+      hideError();
+    }
+
+    function clearSequence() {
+      sequence = [];
+      document.querySelectorAll('.grid-cell').forEach(c => {
+        c.classList.remove('selected');
+      });
+      dots.innerHTML = '';
+      submitBtn.disabled = true;
+      hideError();
+    }
+
+    function hideError() {
+      errorEl.classList.add('hidden');
+      errorEl.textContent = '';
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+      grid.classList.add('shake');
+      setTimeout(() => grid.classList.remove('shake'), 400);
+    }
+
+    clearBtn.addEventListener('click', clearSequence);
+
+    submitBtn.addEventListener('click', submitLogin);
+
+    async function submitLogin() {
+      if (sequence.length === 0) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = '...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sequence: sequence.join(',') })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('drop2_token', data.token);
+          window.location.href = '/dashboard.html';
+        } else {
+          showError(data.error || 'Invalid pattern');
+          clearSequence();
+        }
+      } catch {
+        showError('Connection error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Enter';
+      }
+    }
+
+    // Keyboard support
+    document.addEventListener('keydown', (e) => {
+      if (e.key >= '1' && e.key <= '9') {
+        toggleCell(parseInt(e.key));
+      } else if (e.key === 'Enter') {
+        if (sequence.length > 0) submitLogin();
+      } else if (e.key === 'Backspace') {
+        sequence.pop();
+        updateUI();
+        if (sequence.length === 0) clearSequence();
+      }
+    });
+
+    // Redirect if already logged in
+    (async () => {
+      const token = localStorage.getItem('drop2_token');
+      if (token) {
+        try {
+          const res = await fetch('/api/auth/verify', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) window.location.href = '/dashboard.html';
+        } catch {}
+      }
+    })();
+  </script>
+</body>
+</html>
