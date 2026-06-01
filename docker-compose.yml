@@ -1,4 +1,21 @@
 services:
+  app:
+    build: .
+    ports:
+      - "3006:3000"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/drop2
+      - PORT=3000
+    depends_on:
+      - mongo
+
+  client:
+    build: ./client
+    ports:
+      - "3007:5173"
+    depends_on:
+      - app
+
   mongo:
     image: mongo:7
     container_name: drop2-mongo
