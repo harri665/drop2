@@ -8,7 +8,11 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  console.log(`[Request] ${req.method} ${req.url} - X-Forwarded-For: ${req.headers['x-forwarded-for']} - IP: ${req.ip}`);
+  next();
+});
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -125,7 +129,7 @@ async function start() {
   }
 
   const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => console.log(`drop2 running on http://localhost:${PORT}`));
+  server.listen(PORT, '127.0.0.1', () => console.log(`drop2 running on http://127.0.0.1:${PORT}`));
 }
 
 start().catch(err => {

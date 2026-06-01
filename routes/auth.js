@@ -10,7 +10,7 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Too many attempts, try again in 15 minutes' },
-  validate: false
+  validate: { xForwardedForHeader: false }
 });
 
 // POST /api/auth/login  { sequence: "1,5,9" }
@@ -30,6 +30,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     const token = jwt.sign({ admin: true }, process.env.JWT_SECRET, { expiresIn: '30d' });
     res.json({ token });
   } catch (err) {
+    console.error('[Login Error]', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -49,7 +50,8 @@ router.post('/change-pattern', authMiddleware, loginLimiter, async (req, res) =>
     const hash = await bcrypt.hash(newSequence, 12);
     await Config.updateOne({ key: 'gridHash' }, { value: hash });
     res.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error('[Change Pattern Error]', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
