@@ -6,11 +6,11 @@ const Config = require('../models/Config');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
-
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { error: 'Too many attempts, try again in 15 minutes' }
+  message: { error: 'Too many attempts, try again in 15 minutes' },
+  validate: false
 });
 
 // POST /api/auth/login  { sequence: "1,5,9" }
