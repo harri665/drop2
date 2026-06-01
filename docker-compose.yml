@@ -21,7 +21,7 @@ services:
       - app
 
   mongo:
-    image: mongo:7.0
+    image: mongo:4.4
     container_name: drop2-mongo
     restart: unless-stopped
     ports:
@@ -29,7 +29,7 @@ services:
     volumes:
       - drop2-mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
