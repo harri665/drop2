@@ -1,40 +1,46 @@
 services:
-  app:
-    build: .
-    ports:
-      - "3007:3000"
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: drop-server
     environment:
-      - MONGODB_URI=mongodb://mongo:27017/drop2
-      - PORT=3000
-      - JWT_SECRET=drop2-super-secret-jwt-key-change-me
-      - INITIAL_GRID_SEQUENCE=1,5,9
-    depends_on:
-      mongo:
-        condition: service_healthy
+      - NODE_ENV=production
+      - PORT=3001
+      - DROP_PIN=${DROP_PIN:?Set DROP_PIN to a 6-digit PIN in .env}
+      - JWT_SECRET=${JWT_SECRET:-}
+      - TOKEN_DAYS=${TOKEN_DAYS:-30}
+      - MAX_UPLOAD_MB=${MAX_UPLOAD_MB:-500}
+      # Number of proxies in front of the server: 1 = the bundled nginx. Use 2 if you add your own reverse proxy.
+      - TRUST_PROXY=${TRUST_PROXY:-1}
+    volumes:
+      - drop-data:/app/data
+    networks:
+      - drop-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   client:
-    build: ./client
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: drop-client
     ports:
-      - "3006:5173"
-    environment:
-      - VITE_API_TARGET=http://app:3000
-      - VITE_SOCKET_URL=http://localhost:3007
+      - "${DROP_PORT:-80}:80"
     depends_on:
-      - app
-
-  mongo:
-    image: mongo:4.4
-    container_name: drop2-mongo
+      - server
+    networks:
+      - drop-network
     restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - drop2-mongo-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
 volumes:
-  drop2-mongo-data:
+  drop-data:
+
+networks:
+  drop-network:
+    driver: bridge
