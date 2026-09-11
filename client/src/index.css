@@ -85,18 +85,14 @@ body {
   .btn:hover { background: rgb(255 255 255 / 0.12); border-color: rgb(255 255 255 / 0.18); }
   .btn:active { transform: scale(0.97); }
   .btn:disabled { opacity: 0.45; pointer-events: none; }
-  .btn:focus-visible, .icon-btn:focus-visible { outline: 2px solid rgb(167 139 250 / 0.8); outline-offset: 2px; }
+  .btn:focus-visible, .icon-btn:focus-visible { outline: 2px solid rgb(255 255 255 / 0.6); outline-offset: 2px; }
 
   .btn-primary {
-    color: #fff;
-    border-color: rgb(255 255 255 / 0.2);
-    background: linear-gradient(135deg, #8b5cf6, #3b82f6 60%, #06b6d4);
-    box-shadow: 0 8px 24px -8px rgb(99 102 241 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.25);
+    color: #0b0b10;
+    background: #f4f4f5;
+    border-color: transparent;
   }
-  .btn-primary:hover { background: linear-gradient(135deg, #9b6dff, #4b8ffa 60%, #16c6e4); }
-
-  .btn-danger { color: #fecaca; background: rgb(239 68 68 / 0.18); border-color: rgb(248 113 113 / 0.35); }
-  .btn-danger:hover { background: rgb(239 68 68 / 0.28); }
+  .btn-primary:hover { background: #fff; border-color: transparent; }
 
   .icon-btn {
     display: inline-flex;

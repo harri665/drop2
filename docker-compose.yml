@@ -3,7 +3,8 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: drop-server
+    # COMPOSE_PROJECT_NAME (set in .env) names this instance; it also scopes the volume and network.
+    container_name: ${COMPOSE_PROJECT_NAME:-drop}-server
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -29,7 +30,7 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: drop-client
+    container_name: ${COMPOSE_PROJECT_NAME:-drop}-client
     ports:
       - "${DROP_PORT:-80}:80"
     depends_on:

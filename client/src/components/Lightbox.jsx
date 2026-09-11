@@ -33,7 +33,7 @@ export default function Lightbox({ item, onClose, onShare }) {
         </div>
         {canCopyImages && (
           <button className="icon-btn" onClick={copy} title="Copy image" aria-label="Copy image">
-            {copied ? <Check size={18} className="text-emerald-300" /> : <Copy size={18} />}
+            {copied ? <Check size={18} /> : <Copy size={18} />}
           </button>
         )}
         <a className="icon-btn" href={fileUrl(item, { download: true })} download={item.name} title="Download" aria-label="Download">

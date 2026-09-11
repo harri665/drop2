@@ -7,7 +7,7 @@ import { getToasts, subscribe } from '../lib/toast'
 export function Spinner({ size = 20, className = '' }) {
   return (
     <span
-      className={`inline-block animate-spin rounded-full border-2 border-white/20 border-t-white/80 ${className}`}
+      className={`inline-block animate-spin rounded-full border-2 border-current/20 border-t-current ${className}`}
       style={{ width: size, height: size }}
     />
   )
@@ -59,7 +59,7 @@ export function DeleteButton({ onConfirm, compact = false, className = '' }) {
   if (armed) {
     return (
       <button
-        className={`btn btn-danger animate-pop ${compact ? 'h-8 px-2.5 text-xs' : 'h-9 px-3'} ${className}`}
+        className={`btn animate-pop ${compact ? 'h-8 px-2.5 text-xs' : 'h-9 px-3'} ${className}`}
         onClick={onConfirm}
       >
         Delete?
@@ -68,7 +68,7 @@ export function DeleteButton({ onConfirm, compact = false, className = '' }) {
   }
   return (
     <button
-      className={`icon-btn hover:bg-red-500/15 hover:text-red-300 ${compact ? 'h-8 w-8' : ''} ${className}`}
+      className={`icon-btn ${compact ? 'h-8 w-8' : ''} ${className}`}
       onClick={() => setArmed(true)}
       title="Delete"
       aria-label="Delete"

@@ -50,7 +50,7 @@ export default function MediaTile({ item, onOpen, onShare, onDelete }) {
       )}
 
       {item.shareSlug && (
-        <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-emerald-300/30 backdrop-blur-md">
+        <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[11px] font-medium text-white/85 ring-1 ring-white/20 backdrop-blur-md">
           <Link size={11} />
           Shared
         </span>
@@ -65,7 +65,7 @@ export default function MediaTile({ item, onOpen, onShare, onDelete }) {
         <div className="flex items-center">
           {isImage && canCopyImages && (
             <button className="icon-btn h-8 w-8" onClick={copy} title="Copy image" aria-label="Copy image">
-              {copied ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} />}
+              {copied ? <Check size={16} /> : <Copy size={16} />}
             </button>
           )}
           <a
@@ -78,7 +78,7 @@ export default function MediaTile({ item, onOpen, onShare, onDelete }) {
             <Download size={16} />
           </a>
           <button
-            className={`icon-btn h-8 w-8 ${item.shareSlug ? 'text-emerald-300' : ''}`}
+            className={`icon-btn h-8 w-8 ${item.shareSlug ? 'text-white' : ''}`}
             onClick={onShare}
             title="Share link"
             aria-label="Share link"

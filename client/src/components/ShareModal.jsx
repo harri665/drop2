@@ -155,7 +155,7 @@ export default function ShareModal({ item, onClose, onChange }) {
               New random link
             </button>
             <button
-              className="btn btn-danger ml-auto"
+              className="btn ml-auto"
               onClick={() => run('stop', () => api.unshare(item.id))}
               disabled={!!busy}
             >
